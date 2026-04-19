@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: xianyu-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: xianyu
+      POSTGRES_USER: xianyu
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_change_me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xianyu"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: xianyu-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: langfuse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse_dev_password}
+    volumes:
+      - ./data/langfuse-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 10s
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: xianyu-langfuse
+    restart: unless-stopped
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse_dev_password}@langfuse-db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3100
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-change-me-in-prod-at-least-32-chars}
+      SALT: ${LANGFUSE_SALT:-change-me-too-at-least-32-characters}
+      TELEMETRY_ENABLED: "false"
+    ports:
+      - "3100:3000"
+
+networks:
+  default:
+    name: xianyu-net

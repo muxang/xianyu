@@ -1,0 +1,36 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_PATH\" | grep -q \"\\.py$\"; then cd backend && uv run ruff check --fix \"$CLAUDE_TOOL_PATH\" 2>&1 | head -20 || true; fi"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"Session ended at $(date)\" >> .claude/session-log.txt"
+          }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://xianyu:dev_password_change_me@localhost:5432/xianyu"
+      ]
+    }
+  }
+}
