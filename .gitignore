@@ -47,3 +47,7 @@ logs/
 # Claude Code
 .claude/local/
 .claude/session-log.txt
+.claude/settings.local.json
+
+# Project-local operational notes (not part of the shipped project)
+docs/playbook/
