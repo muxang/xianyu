@@ -69,7 +69,6 @@ ignore = ["E501"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = "test_*.py"
-pythonpath = ["app"]
 
 [tool.mypy]
 python_version = "3.11"
