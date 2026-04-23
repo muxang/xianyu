@@ -1,0 +1,112 @@
+# Purpose-to-model routing table.
+#
+# Each LLMPurpose has:
+#   primary:      main model to try
+#   fallback:     model to try when primary fails / times out
+#   timeout_ms:   total timeout budget per attempt (see warning below)
+#   max_retries:  LiteLLM-internal retries within a single attempt
+#   temperature:  0-1, 0.1 for classification / 0.7 for generation
+#
+# --------------------------------------------------------------------
+# ⚠ IMPORTANT: timeout_ms is a TOTAL BUDGET, NOT per-attempt.
+# --------------------------------------------------------------------
+# The gateway wraps `litellm.acompletion(..., num_retries=max_retries)`
+# inside a single `asyncio.wait_for(timeout=timeout_ms/1000)`. That
+# outer deadline covers the WHOLE retry loop, so with
+# `max_retries=2` and `timeout_ms=3000` you may see:
+#
+#   Example 1 — fast-failing retry chain:
+#     attempt 1 fails in 100ms -> retry 1 starts at 100ms,
+#     fails at 200ms -> retry 2 starts at 200ms, completes at 1s.
+#     Total: 1s of 3s budget used. Good.
+#
+#   Example 2 — slow primary first call:
+#     attempt 1 takes 2.9s and fails -> retry 1 starts at 2.9s,
+#     cancelled at 3s by wait_for. No retry 2 fires.
+#     Total: 3s, only 1 attempt completed. Tune timeout_ms higher if
+#     you actually need the retry budget.
+#
+#   Example 3 — "5.1s first call":
+#     A 5.1s primary attempt on a purpose with timeout_ms=5000
+#     exhausts the budget before the first attempt even completes.
+#     num_retries has no effect here — the deadline fires first.
+#
+# If you truly need per-attempt timeout, two options (neither is
+# wired today):
+#   (a) Pre-divide the budget: pass
+#       `timeout=timeout_ms/(max_retries+1)` to litellm.acompletion
+#       so each attempt has its own slice. Downside: stricter than
+#       necessary on fast-failing retries.
+#   (b) Reshape the schema to `per_attempt_timeout_ms` and remove
+#       the outer wait_for. Downside: at the mercy of LiteLLM's
+#       cross-vendor timeout implementation.
+# --------------------------------------------------------------------
+#
+# Changes to this file trigger capability re-validation at startup.
+# If validation fails, the app will refuse to boot.
+# See app/modules/model_gateway/capabilities.py for the checks.
+#
+# Do NOT add `-latest` or dated-snapshot model variants (e.g.
+# `dashscope/qwen-vl-max-latest`) without first adding a separate
+# MODEL_CAPABILITIES entry with verified capabilities for that
+# specific variant. See the VL caveat in capabilities.py.
+
+version: 1
+
+routes:
+  INTENT_CLASSIFICATION:
+    primary: dashscope/qwen-turbo
+    fallback: dashscope/qwen-plus
+    timeout_ms: 3000
+    max_retries: 2
+    temperature: 0.1
+
+  RETRIEVAL_SELECTOR:
+    primary: dashscope/qwen-turbo
+    fallback: dashscope/qwen-plus
+    timeout_ms: 3000
+    max_retries: 1
+    temperature: 0.1
+
+  MAIN_GENERATION:
+    primary: dashscope/qwen-max
+    fallback: deepseek/deepseek-chat
+    timeout_ms: 10000
+    max_retries: 2
+    temperature: 0.7
+
+  NEGOTIATION_GENERATION:
+    primary: dashscope/qwen-max
+    fallback: deepseek/deepseek-chat
+    timeout_ms: 10000
+    max_retries: 2
+    temperature: 0.7
+
+  STYLE_REWRITE:
+    primary: dashscope/qwen-turbo
+    fallback: deepseek/deepseek-chat
+    timeout_ms: 5000
+    max_retries: 1
+    temperature: 0.5
+
+  IMAGE_UNDERSTANDING:
+    primary: dashscope/qwen-vl-max
+    fallback: dashscope/qwen-vl-plus
+    timeout_ms: 15000
+    max_retries: 1
+    temperature: 0.3
+
+  # CHITCHAT is a short-in / short-out scenario.
+  # qwen-flash has cheap input (0.15 CNY/1M) but expensive output
+  # (1.5 CNY/1M -- 2.5x qwen-turbo's output). For a typical 100/30
+  # (input/output) tokens chitchat turn, qwen-flash ends up ~25%
+  # MORE expensive than qwen-turbo. qwen-flash is the right choice
+  # for long-input short-output workloads (document summarization),
+  # not conversational chitchat.
+  # See Step 5 pricing report (2026-04-23) for source quotes.
+  CHITCHAT:
+    primary: dashscope/qwen-turbo
+    fallback: dashscope/qwen-plus
+    timeout_ms: 5000
+    max_retries: 1
+    temperature: 0.7
