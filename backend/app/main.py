@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.db.session import dispose_engine, get_engine, get_session_maker
+from app.modules.model_gateway import initialize as init_model_gateway
 
 log = structlog.get_logger(__name__)
 
@@ -22,13 +23,27 @@ _DB_HEALTHCHECK_TIMEOUT = 3.0
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    log.info("app_starting", app_env=settings.APP_ENV)
+    # Initialization order is deliberate: model_gateway first, DB second.
+    #
+    # - Model gateway startup validates YAML routing + capability tables.
+    #   Failures here are configuration problems that must block boot so
+    #   the app never serves traffic with a malformed routing table.
+    # - DB engine pre-warming only sets up the async engine pool; actual
+    #   connectivity is deferred to first query. If Docker Postgres isn't
+    #   up, we still want the model_gateway config errors (if any) to
+    #   surface first — they're authoritative, while DB issues may be
+    #   transient / infra-level.
+    init_model_gateway()
+    log.info("model_gateway_ready")
+
     # Pre-construct the engine before serving requests so two concurrent
     # first-callers cannot race to build two engines (TOCTOU on the
     # module-level singleton). FastAPI runs lifespan startup before the
     # server accepts connections, so this call is guaranteed serial.
     get_engine()
-    log.info("engine_initialized")
+    log.info("db_engine_ready")
+
+    log.info("app_starting", app_env=settings.APP_ENV)
     yield
     await dispose_engine()
     log.info("app_stopped")

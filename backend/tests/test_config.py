@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+
 import pytest
 from pydantic import ValidationError
 
@@ -18,6 +20,25 @@ REQUIRED_KWARGS: dict[str, str] = {
     "APP_WORKSPACE_PASSWORD": "test_password",
     "COOKIE_ENCRYPTION_KEY": "test_fernet_key",
 }
+
+
+@pytest.fixture(autouse=True)
+def _clean_settings_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[None, None, None]:
+    """Wipe every Settings field from the process environment.
+
+    Without this, values from the developer's real ``.env`` (loaded
+    into the shell via tooling, or inherited from the test runner
+    environment) leak past ``_env_file=None`` and invalidate
+    assertions that a field has its declared default. For example,
+    ``DEEPSEEK_API_KEY`` defaults to ``""`` but the real ``.env``
+    has a live key — pydantic-settings reads env vars regardless of
+    whether a ``.env`` file is being consulted.
+    """
+    for field_name in Settings.model_fields:
+        monkeypatch.delenv(field_name, raising=False)
+    yield
 
 
 def test_module_singleton_loaded_from_env() -> None:

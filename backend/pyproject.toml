@@ -52,6 +52,7 @@ dev = [
     "ruff>=0.7.0",
     "mypy>=1.13.0",
     "ipython>=8.28.0",
+    "types-pyyaml>=6.0.12.20260408",
 ]
 
 [tool.uv]
@@ -69,6 +70,10 @@ ignore = ["E501"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = "test_*.py"
+# Integration tests hit real external APIs (LLM vendors, Langfuse).
+# They are skipped by default; run explicitly with `pytest -m integration`.
+markers = ["integration: real external API calls, skipped by default"]
+addopts = "-m 'not integration'"
 
 [tool.mypy]
 python_version = "3.11"
